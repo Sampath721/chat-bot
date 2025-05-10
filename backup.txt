@@ -1,0 +1,231 @@
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const chatbotContainer = document.getElementById('chatbotContainer');
+        const chatbotToggle = document.getElementById('chatbotToggle');
+        const closeChat = document.getElementById('closeChat');
+        const chatMessages = document.getElementById('chatMessages');
+        const userInput = document.getElementById('userInput');
+        const sendMessage = document.getElementById('sendMessage');
+        const quickReplies = document.querySelectorAll('.quick-reply');
+        const notificationSound = document.getElementById('notificationSound');
+
+        // Toggle chat window
+        chatbotToggle.addEventListener('click', function () {
+            chatbotContainer.classList.add('active');
+        });
+
+        // Close chat window
+        closeChat.addEventListener('click', function () {
+            chatbotContainer.classList.remove('active');
+            chatbotToggle.style.display = 'flex';
+        });
+
+        // Send message when button is clicked
+        sendMessage.addEventListener('click', sendUserMessage);
+
+        // Send message when Enter key is pressed
+        userInput.addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                sendUserMessage();
+            }
+        });
+
+        // Quick reply buttons
+        quickReplies.forEach(button => {
+            button.addEventListener('click', function () {
+                const message = this.getAttribute('data-message');
+                userInput.value = message;
+                sendUserMessage();
+            });
+        });
+
+        function sendUserMessage() {
+            const message = userInput.value.trim();
+            if (message === '') return;
+
+            addMessage(message, 'user');
+            userInput.value = ''; // Clear input after sending
+            showTypingIndicator();
+
+            fetchBotResponse(message).then(({ mainMessage, relatedQuestions }) => {
+                removeTypingIndicator();
+                addMessageWithQuestions(mainMessage, relatedQuestions);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }).catch(error => {
+                removeTypingIndicator();
+                addMessage("Error fetching response. Please try again.", 'bot');
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            });
+        }
+
+        function addMessage(text, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', sender + '-message');
+
+            const messageContent = document.createElement('div');
+            messageContent.textContent = text;
+
+            const messageTime = document.createElement('div');
+            messageTime.classList.add('message-time');
+            messageTime.textContent = getCurrentTime();
+
+            messageDiv.appendChild(messageContent);
+            messageDiv.appendChild(messageTime);
+            chatMessages.appendChild(messageDiv);
+
+            // Play notification sound for bot messages
+            if (sender === 'bot') {
+                notificationSound.play().catch(error => console.log("Audio play failed:", error));
+            }
+
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function addMessageWithQuestions(mainMessage, relatedQuestions) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', 'bot-message');
+
+            const messageContent = document.createElement('div');
+            messageContent.textContent = mainMessage;
+
+            const messageTime = document.createElement('div');
+            messageTime.classList.add('message-time');
+            messageTime.textContent = getCurrentTime();
+
+            messageDiv.appendChild(messageContent);
+            messageDiv.appendChild(messageTime);
+
+            // Add related questions as clickable buttons
+            if (relatedQuestions && relatedQuestions.length > 0) {
+                const questionsDiv = document.createElement('div');
+                questionsDiv.classList.add('quick-replies');
+
+                relatedQuestions.forEach(question => {
+                    const questionButton = document.createElement('button');
+                    questionButton.classList.add('quick-reply');
+                    questionButton.setAttribute('data-message', question);
+                    questionButton.textContent = question;
+
+                    // Add click event to send the question as a user message
+                    questionButton.addEventListener('click', function () {
+                        userInput.value = question;
+                        sendUserMessage();
+                    });
+
+                    questionsDiv.appendChild(questionButton);
+                });
+
+                messageDiv.appendChild(questionsDiv);
+            }
+
+            chatMessages.appendChild(messageDiv);
+
+            // Play notification sound for bot messages
+            notificationSound.play().catch(error => console.log("Audio play failed:", error));
+
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function showTypingIndicator() {
+            const typingDiv = document.createElement('div');
+            typingDiv.classList.add('typing-indicator');
+            typingDiv.id = 'typingIndicator';
+            typingDiv.innerHTML = '<span></span><span></span><span></span>';
+            chatMessages.appendChild(typingDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function removeTypingIndicator() {
+            const typingIndicator = document.getElementById('typingIndicator');
+            if (typingIndicator) {
+                typingIndicator.remove();
+            }
+        }
+
+        function getCurrentTime() {
+            const now = new Date();
+            let hours = now.getHours();
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            return `${hours}:${minutes} ${ampm}`;
+        }
+
+        async function fetchBotResponse(message, name = "", contact = "", interested = "") {
+            const baseUrl = 'https://chatbot.g-axis.in/chat/';
+            const tag = message.toLowerCase().includes('contact us') ? 'willing_to_contact' : 'queries';
+            const apiUrl = `${baseUrl}${tag}`;
+
+            const requestBody = {
+                question: message,
+                name: name,
+                contact: contact,
+                interested: interested
+            };
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        // 'Authorization': `Bearer ${apiKey}` // Uncomment if needed
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API request failed with status: ${response.status}`);
+                }
+
+                // Get the response as text (since the API returns plain text)
+                const botResponse = await response.text();
+
+                // Parse the response to filter out the question and extract the answer
+                let mainPart = botResponse.trim();
+                let answerPart = mainPart;
+
+                // Check if the response contains "Q)" and "A)" markers
+                if (mainPart.includes('Q)') && mainPart.includes('A)')) {
+                    const parts = mainPart.split('A)');
+                    if (parts.length > 1) {
+                        answerPart = parts[1].trim(); // Extract the part after "A)"
+                    }
+                }
+
+                // Parse the answer part for related questions and additional message
+                const separatorQuestions = "Here are some related questions you might find helpful:";
+                const separatorAdditional = "--------------------->";
+                const answerParts = answerPart.split(separatorAdditional);
+                let answerMain = answerParts[0]?.trim() || answerPart.trim();
+                let additionalMessage = answerParts.length > 1 ? answerParts[1].trim() : '';
+
+                // Split the answer main part to extract questions
+                const questionParts = answerMain.split(separatorQuestions);
+                let mainMessage = questionParts[0]?.trim() || answerMain.trim();
+                let relatedQuestions = [];
+
+                if (questionParts.length > 1) {
+                    const questionsText = questionParts[1].trim();
+                    const questionMatches = questionsText.match(/\d+\.\s*([^\n]+)/g);
+
+                    if (questionMatches) {
+                        relatedQuestions = questionMatches.map(match => {
+                            return match.replace(/^\d+\.\s*/, '').trim();
+                        });
+                    }
+                }
+
+                // Combine main message and additional message
+                if (additionalMessage) {
+                    mainMessage = `${mainMessage}\n\n${additionalMessage}`;
+                }
+
+                return { mainMessage, relatedQuestions };
+            } catch (error) {
+                console.error('Error:', error);
+                throw new Error("Sorry, I couldn't process your request. Please try again.");
+            }
+        }
+    });
+</script>

@@ -716,7 +716,7 @@
     font-size: 14px;
     font-weight: 500;
     transition: all 0.3s ease;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 7px rgba(0,0,0,0.1);
     backdrop-filter: blur(10px);
     box-sizing: border-box;
 }
